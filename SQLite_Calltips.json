@@ -1,0 +1,255 @@
+﻿{
+	"abs": {
+		"text": "abs(number)",
+		"highlight": [
+			[4, 10]
+		]
+	},
+	"avg": {
+		"text": "avg(X)\nReturns the average value of all non-NULL X within a group",
+		"highlight": [
+			[4, 5]
+		]
+	},
+	"char": {
+		"text": "char(number*)\nReturns a string composed of characters having the unicode code point values of passed arguments",
+		"highlight": [
+			[5, 12]
+		]
+	},
+	"coalesce": {
+		"text": "coalesce(X, Y [, ...])\nreturns a copy of its first non-NULL argument, or NULL if all arguments are NULL",
+		"highlight": [
+			[9, 10],
+			[12, 13],
+			[17, 20]
+		]
+	},
+	"count": {
+		"text": "count(<field>|*)",
+		"highlight": [
+			[6, 15]
+		]
+	},
+	"date": {
+		"text": "date(timestring [, modifiers*])\nReturns the date in this format: YYYY-MM-DD",
+		"highlight": [
+			[5, 15],
+			[18, 29]
+		]
+	},
+	"datetime": {
+		"text": "datetime(timestring [, modifiers*])\nReturns the date and time in this format: YYYY-MM-DD HH:MM:SS",
+		"highlight": [
+			[9, 19],
+			[22, 33]
+		]
+	},
+	"glob": {
+		"text": "glob(pattern, input)",
+		"highlight": [
+			[5, 12],
+			[14, 19]
+		]
+	},
+	"group_concat": {
+		"text": "group_concat(X [, Y])\nReturns a string which is the concatenation of all non-NULL values of X separated by Y\nIf Y is omitted, then a comma (\",\") is used\nThe order of the concatenated elements is arbitrary",
+		"highlight": [
+			[13, 14],
+			[18, 19]
+		]
+	},
+	"hex": {
+		"text": "hex(blob)\nReturns a string which is the upper-case hexadecimal rendering of <blob>",
+		"highlight": [
+			[4, 8]
+		]
+	},
+	"ifnull": {
+		"text": "ifnull(X, Y)\nReturns a copy of its first non-NULL argument, or NULL if both arguments are NULL\nEquivalent to coalesce() with two arguments",
+		"highlight": [
+			[7, 8],
+			[10, 13]
+		]
+	},
+	"julianday": {
+		"text": "julianday(timestring [, modifiers*])\nReturns the Julian day - the number of days since noon in Greenwich on November 24, 4714 B.C.",
+		"highlight": [
+			[10, 20],
+			[23, 34]
+		]
+	},
+	"instr": {
+		"text": "instr(target, search)\nFinds the first occurrence of <search> within <target>\nReturns the number of prior characters plus 1, or 0 if not found",
+		"highlight": [
+			[6, 12],
+			[14, 20]
+		]
+	},
+	"length": {
+		"text": "length(string|blob)\nFor strings, returns number of characters prior to first NUL character\nFor BLOBs, returns number of bytes\nIf argument is numeric, return length of its string representation",
+		"highlight": [
+			[7, 18]
+		]
+	},
+	"like": {
+		"text": "like(pattern, input [, escape])\nReturns true if <pattern> is found within <input>. <escape> is used to allow literal special characters like % or _",
+		"highlight": [
+			[5, 12],
+			[14, 19],
+			[23, 29]
+		]
+	},
+	"lower": {
+		"text": "lower(string)\nReturns a copy of <string> with all ASCII characters converted to lower case",
+		"highlight": [
+			[6, 12]
+		]
+	},
+	"ltrim": {
+		"text": "ltrim(X [, Y])\nReturns a string by removing all characters in Y from the left side of X\nIf Y is omitted, removes spaces from left side of X",
+		"highlight": [
+			[6, 7],
+			[11, 12]
+		]
+	},
+	"max": {
+		"text": "max(X, Y [, ...])\nReturns the argument with the maximum value, or return NULL if any argument is NULL\nOperates as an aggregate function when a single argument is used",
+		"highlight": [
+			[4, 5],
+			[7, 8],
+			[12, 15]
+		]
+	},
+	"min": {
+		"text": "min(X, Y [, ...])\nReturns the argument with the minimum value, or return NULL if any argument is NULL\nOperates as an aggregate function when a single argument is used",
+		"highlight": [
+			[4, 5],
+			[7, 8],
+			[12, 15]
+		]
+	},
+	"nullif": {
+		"text": "nullif(X, Y)\nReturns its first argument if the arguments are different and NULL if the arguments are the same",
+		"highlight": [
+			[7, 8],
+			[10, 11]
+		]
+	},
+	"printf": {
+		"text": "printf(FORMAT [, ...])\nFormats a string by constructing from FORMAT and all subsequent passed values\nSimilar to printf() from the standard C library",
+		"highlight": [
+			[7, 13],
+			[17, 20]
+		]
+	},
+	"quote": {
+		"text": "quote(X)\nReturns the text of a SQL literal which is the value of its argument suitable for inclusion into an SQL statement",
+		"highlight": [
+			[6, 7]
+		]
+	},
+	"randomblob": {
+		"text": "randomblob(N)\nReturns a N-byte blob containing pseudo-random bytes\nIf N is less than 1, then a 1-byte random blob is returned",
+		"highlight": [
+			[11, 12]
+		]
+	},
+	"replace": {
+		"text": "replace(X, Y, Z)\nReturns a string formed by substituting string Z for every occurrence of string Y in string X",
+		"highlight": [
+			[8, 9],
+			[11, 12],
+			[14, 15]
+		]
+	},
+	"round": {
+		"text": "round(X [, Y=0])\nReturns a floating-point value X rounded to Y digits to the right of the decimal point",
+		"highlight": [
+			[6, 7],
+			[11, 14]
+		]
+	},
+	"rtrim":{
+		"text": "rtrim(X [, Y])\nReturns a string by removing all characters in Y from the right side of X\nIf Y is omitted, removes spaces from right side of X",
+		"highlight": [
+			[6, 7],
+			[11, 12]
+		]
+	},
+	"sqlite_source_id": {
+		"text": "sqlite_source_id()\nReturns a string that identifies the specific version of the source code that was used to build the SQLite library"
+	},
+	"sqlite_version": {
+		"text": "sqlite_version()\nReturns the version string for the SQLite library that is running"
+	},
+	"strftime": {
+		"text": "strftime(format [, timestring=\"now\" [, modifiers*]])\nReturns the date formatted according to the format string specified as the first argument",
+		"highlight": [
+			[9, 15],
+			[19, 29],
+			[39, 49]
+		]
+	},
+	"substr": {
+		"text": "substr(input, start [, length])",
+		"highlight": [
+			[7, 12],
+			[14, 19],
+			[23, 29]
+		]
+	},
+	"sum": {
+		"text": "sum(X)\nReturns the sum of all non-NULL values in the group\nReturns NULL if all input rows are NULL",
+		"highlight": [
+			[4, 5]
+		]
+	},
+	"time": {
+		"text": "time(timestring [, modifiers*])\nReturns the time as HH:MM:SS",
+		"highlight": [
+			[5, 15],
+			[18, 29]
+		]
+	},
+	"total": {
+		"text": "total(X)\nReturns the sum of all non-NULL values in the group\nReturns 0.0 if all input rows are NULL",
+		"highlight": [
+			[6, 7]
+		]
+	},
+	"total_changes": {
+		"text": "total_changes()\nReturns the number of row changes caused by INSERT, UPDATE or DELETE statements since the current database connection was opened"
+	},
+	"trim": {
+		"text": "trim(X [, Y])\nReturns a string formed by removing all characters that appear in Y from both ends of X\nIf Y is omitted, removes spaces from both ends of X",
+		"highlight": [
+			[5, 6],
+			[10, 11]
+		]
+	},
+	"typeof": {
+		"text": "typeof(X)\nReturns a string that indicates the datatype of the X: \"null\", \"integer\", \"real\", \"text\", or \"blob\"",
+		"highlight": [
+			[7, 8]
+		]
+	},
+	"unicode": {
+		"text": "unicode(X)\nReturns the numeric unicode code point corresponding to the first character of the string X\nIf X is not a string, then the result is undefined",
+		"highlight": [
+			[8, 9]
+		]
+	},
+	"upper": {
+		"text": "upper(X)\nReturns a copy of string X with all ASCII characters converted to upper-case",
+		"highlight": [
+			[6, 7]
+		]
+	},
+	"zeroblob": {
+		"text": "zeroblob(N)\nReturns a BLOB consisting of N bytes of 0x00",
+		"highlight": [
+			[9, 10]
+		]
+	}
+}
