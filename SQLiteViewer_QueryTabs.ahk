@@ -12,6 +12,7 @@
         this.queryTabs := gui.addTab2(Opts, "+")
         this.queryTabs.OnEvent("Change", (ctrl) => this.onTabChange(ctrl))
         this.queryTabs.OnNotify(TCN_SELCHANGING := -552, (ctrl) => this.onTabChanging(ctrl))
+        OnMessage(WM_MBUTTONDOWN  := 0x0207, (wParam, lParam, msg, hwnd) => this.OnMClick(wParam, lParam, msg, hwnd))
         this.queryTabs.UseTab()
         TC_EX_GetInterior(this.queryTabs.hwnd, tabx, taby, tabw, tabh)
         this.tabsInterior := {
@@ -24,13 +25,65 @@
         this.queryEdit := new Scintilla(gui, "x" this.queryTabs.pos.x + this.tabsInterior.x - 2 " y" this.queryTabs.pos.y + this.tabsInterior.y " w" this.tabsInterior.w - 2 " h" this.tabsInterior.h - this.tabsInterior.y + 1 " Hidden vQuery", , 0, 0)
         setupSciControl(this.queryEdit)
         
-        ; this.queryEdit.SetMouseDwellTime(3000)
+        this.queryEdit.SetMouseDwellTime(2000)
         this.queryEdit.SetModEventMask(Scintilla.SC_MOD_BEFOREDELETE | Scintilla.SC_PERFORMED_USER | Scintilla.SC_MOD_CHANGESTYLE | Scintilla.SC_MOD_INSERTCHECK)
         this.queryEdit.OnNotify(this.queryEdit.SCN_CHARADDED, (ctrl, l) => this.handleCharAdded(ctrl, l))
         this.queryEdit.OnNotify(this.queryEdit.SCN_MODIFIED, (ctrl, l) => this.handleModification(ctrl, l))
+        this.queryEdit.OnNotify(this.queryEdit.SCN_AUTOCSELECTION, (ctrl, l) => this.handleAutoCSelection(ctrl, l))
+        this.queryEdit.OnNotify(this.queryEdit.SCN_AUTOCCOMPLETED, (ctrl, l) => this.handleAutoCCompleted(ctrl, l))
         this.queryEdit.OnNotify(this.queryEdit.SCN_UPDATEUI, (ctrl, l) => this.handleUpdateUI(ctrl, l))
-        ; this.queryEdit.OnNotify(this.queryEdit.SCN_DWELLSTART, (ctrl, l) => this.handleDwell(ctrl, l))
-        ; this.queryEdit.OnNotify(this.queryEdit.SCN_DWELLEND, () => this.queryEdit.CallTipCancel())
+        this.queryEdit.OnNotify(this.queryEdit.SCN_DWELLSTART, (ctrl, l) => this.handleDwell(ctrl, l))
+        this.queryEdit.OnNotify(this.queryEdit.SCN_DWELLEND, (ctrl, l) => this.handleDwell(ctrl, l, true))
+    }
+    
+    OnMClick(wParam, lParam, msg, hwnd) {
+        if (hwnd = this.queryTabs.hwnd) {
+            VarSetCapacity(HITTEST, 12)
+            NumPut(lParam & 0xFFFF, HITTEST, 0, "Int")
+            NumPut(lParam >> 16, HITTEST, 4, "Int")
+            index := SendMessage(TCM_HITTEST := 0x130D, 0, &HITTEST, hwnd)
+            this.removeQueryTab(false, index + 1)
+        }
+    }
+    
+    handleAutoCSelection(ctrl, l) {
+        ; only process for autocompletion done via TAB and ENTER
+        if ((isTab := this.queryEdit.listCompletionMethod = this.queryEdit.SC_AC_TAB) || this.queryEdit.listCompletionMethod = this.queryEdit.SC_AC_NEWLINE) {
+            ; get what the user had already typed
+            start := this.queryEdit.position
+            end := this.queryEdit.WordEndPosition(start)
+            word := GetTextRange([start, end])
+            
+            ; if it matches a whole word from the autocompletion list
+            if (word = StrGet(this.queryEdit.text, "UTF-8")) {
+                ; prep to insert accordingly upon receipt of SCN_AUTOCCOMPLETED
+                if (isTab) {
+                    this.insertAfterAutoComplete := "    "
+                }
+                else {
+                    this.insertAfterAutoComplete := "`n"
+                }
+            }
+        }
+        
+        ; helper
+        GetTextRange(Range) {
+            VarSetCapacity(Text, Abs(Range[1] - Range[2]) + 1, 0)
+            VarSetCapacity(Sci_TextRange, 8 + A_PtrSize, 0)
+            NumPut(Range[1], Sci_TextRange, 0, "UInt")
+            NumPut(Range[2], Sci_TextRange, 4, "UInt")
+            NumPut(&Text, Sci_TextRange, 8, "Ptr")
+            this.queryEdit.GetTextRange(0, &Sci_TextRange) ; SCI_GETTEXTRANGE
+            Return StrGet(&Text,, "UTF-8")
+        }
+    }
+    
+    handleAutoCCompleted(ctrl, l) {
+        if (this.insertAfterAutoComplete) {
+            this.queryEdit.InsertText(caretPos := this.queryEdit.GetCurrentPos(), this.insertAfterAutoComplete, 1)
+            this.queryEdit.GoToPos(caretPos + StrLen(this.insertAfterAutoComplete))
+            this.insertAfterAutoComplete := ""
+        }
     }
     
     /**
@@ -127,6 +180,31 @@
         }
     }
     
+    handleDwell(ctrl, l, cancel := false) {
+        if (cancel) {
+            start := this.queryEdit.WordStartPosition(this.queryEdit.position)
+            end := this.queryEdit.WordEndPosition(this.queryEdit.position)
+            text := GetTextRange([start, end])
+            this.queryEdit.CallTipCancel()
+            this.queryEdit.SetIndicatorCurrent(8)
+            this.queryEdit.IndicatorClearRange(start, end - start)
+        }
+        else {
+            this.calltip(this.queryEdit.position, true)
+        }
+        
+        ; helper
+        GetTextRange(Range) {
+            VarSetCapacity(Text, Abs(Range[1] - Range[2]) + 1, 0)
+            VarSetCapacity(Sci_TextRange, 8 + A_PtrSize, 0)
+            NumPut(Range[1], Sci_TextRange, 0, "UInt")
+            NumPut(Range[2], Sci_TextRange, 4, "UInt")
+            NumPut(&Text, Sci_TextRange, 8, "Ptr")
+            this.queryEdit.GetTextRange(0, &Sci_TextRange) ; SCI_GETTEXTRANGE
+            Return StrGet(&Text,, "UTF-8")
+        }
+    }
+    
     handleCharAdded(ctrl, l) {
         static wordChars := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         char := Chr(this.queryEdit.ch)
@@ -155,7 +233,7 @@
         }
         
         ; Autocomplete
-        else if (InStr(wordChars, char)) {
+        else if (InStr(wordChars, char) && !this.queryEdit.CallTipActive()) {
             this.autoComplete(caretPos)
         }
     }
@@ -186,9 +264,13 @@
             this.queryEdit.InsertText(caretPos, sIndentation . "    ", 1)
             this.queryEdit.GoToPos(caretPos + iIndentation + 4)
         }
+        else if (this.queryEdit.ch = 10) {
+            this.queryEdit.InsertText(caretPos, sIndentation, 1)
+            this.queryEdit.GoToPos(caretPos + iIndentation)
+        }
     }
     
-    callTip(caretPos) {
+    callTip(caretPos, indicator := false) {
         pos := caretPos - 2
         ; Get word that is before the "("
         start := this.queryEdit.WordStartPosition(pos)
@@ -206,6 +288,11 @@
         ; no calltip shown so display it at the start position of the word we are showing the calltip for
         if (!this.queryEdit.CallTipActive()) {
             this.queryEdit.CallTipShow(start, tip.text, 1)
+            
+            if (indicator) {
+                this.queryEdit.SetIndicatorCurrent(8)
+                this.queryEdit.IndicatorFillRange(start, end - start)
+            }
             
             ; apply highlighting if the word is configured for it
             if (tip.HasKey("highlight") && tip.highlight.length()) {
@@ -263,7 +350,7 @@
                 this.queryEdit.InsertText(caretPos, "'", 1)
             }
         }
-        else if (char = "(") {
+        else if (char = "(" && isNextCharBlank) {
             if (!charNextIsCharOrString) {
                 this.queryEdit.InsertText(caretPos, ")", 1)
             }
@@ -327,25 +414,35 @@
             this.gui.control["runBtn"].Enabled := true
         }
         
+        ; this.queryEdit.AddDocument()
+        ; setupSciControl(this.queryEdit)
         this.queryEdit.ClearAll()
         this.queryEdit.ctrl.focus()
     }
     
-    removeQueryTab(db) {
-        Loop(length := this.tabs.length()) {
-            i := length - A_Index + 1
-            if (db == this.tabs[i]) {
-                this.queryTabs.Delete(i)
-                this.tabs.RemoveAt(i)
-                this.tabContents.RemoveAt(i)
+    removeQueryTab(db, index := false) {
+        if (!index) {
+            Loop(length := this.tabs.length()) {
+                i := length - A_Index + 1
+                if (db == this.tabs[i]) {
+                    this.queryTabs.Delete(i)
+                    this.tabs.RemoveAt(i)
+                    this.tabContents.RemoveAt(i)
+                    ; this.queryEdit.deleteDocument(i)
+                }
             }
         }
-        this.queryTabs.Choose(1)
+        else if (Type(index) = "Integer" && this.tabs.HasKey(index)) {
+            this.queryTabs.Delete(index)
+            this.tabs.RemoveAt(index)
+            this.tabContents.RemoveAt(index)
+        }
+        
+        this.queryTabs.Choose(index && Type(index) = "Integer" ? index : 1)
+        this.onTabChange(this.queryTabs)
+        ; this.queryEdit.switchDocument(1)
         
         if (TC_EX_GetCount(this.queryTabs.hwnd) = 1) {
-            this.queryEdit.SetText("", this.tabContents.HasKey(1) ? this.tabContents[1].content : "", 1)
-        }
-        else {
             this.queryEdit.ctrl.visible := false
         }
     }
@@ -380,6 +477,7 @@
                 this.queryEdit.ClearAll()
                 this.queryEdit.ctrl.focus()
             }
+            ; this.queryEdit.switchDocument(ctrl.value)
         }
         else {
             this.queryEdit.ctrl.visible := false

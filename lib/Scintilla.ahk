@@ -17,9 +17,10 @@ Class Scintilla extends Scintilla.ScintillaBase {
      * Instance variables
      */
     hWnd            := 0        ; Component Handle
-
-                                ; Messages which set this variables.
-                                ; ---------------------------------------------------------------------------------------------------------------
+    docs            := []
+    currentDoc      := 0
+    
+    ; Following are all set within the __sciNotify callback method
     idFrom          := 0        ; The handle from which the notification was sent
     scnCode         := 0        ; The SCN_* notification code
     position        := 0        ; SCN_STYLENEEDED, SCN_DOUBLECLICK, SCN_MODIFIED, SCN_MARGINCLICK
@@ -76,6 +77,8 @@ Class Scintilla extends Scintilla.ScintillaBase {
         this.df := SendMessage(this.SCI_GETDIRECTFUNCTION, 0, 0, this.hWnd)
         this.dp := SendMessage(this.SCI_GETDIRECTPOINTER, 0, 0, this.hWnd)
         
+        this.currentDoc := this.docs.push(this.GetDocPointer())
+        
         ; increment control count, which is seen by all instances of Scintilla
         this.controlCount++
     }
@@ -87,6 +90,75 @@ Class Scintilla extends Scintilla.ScintillaBase {
         ; If no more Scintilla controls present, then free the library
         If (this.controlCount = 0) {
             DllCall("FreeLibrary", "Ptr", this._handle)
+        }
+    }
+    
+    addDocument(cb := false) {
+        ; add a ref to the current doc before switching to a new one
+        this.AddRefDocument(0, this.docs[this.currentDoc])
+        
+        this.SetDocPointer(0, 0)
+        
+        ; Save the pointer to the newly created doc
+        this.currentDoc := this.docs.push(this.GetDocPointer())
+        
+        if (cb && Type(cb) ~= "Func|Closure") {
+            cb.Call(this)
+        }
+    }
+    
+    switchDocument(index, cb := false) {
+        ; This shouldn't ever happen since we disable the buttons but just make sure that the index is valid
+        if (this.docs.HasKey(index)) {
+            ; add a ref to the current doc before switching
+            this.AddRefDocument(0, this.docs[this.currentDoc])
+            
+            ; change the pointer
+            this.SetDocPointer(0, this.docs[index])
+            
+            this.currentDoc := index
+            
+            ; release the ref that we were holding to the now current doc so that Scintilla is the sole owner
+            this.ReleaseDocument(0, this.docs[index])
+            
+            if (cb && Type(cb) ~= "Func|Closure") {
+                cb.Call(this)
+            }
+        }
+    }
+    
+    deleteDocument(index, cb := false) {
+        isCurrentDoc := this.currentDoc = index
+        
+        ; save our pointer of the current doc locally to make things easier
+        prevDoc := this.docs[index]
+        
+        ; determine which doc we are going to show after deleting the current one
+        ; If we are deleting the last doc, then show the previous one
+        ; if we are deleting any other doc, then show the document whose pointer will now occupy the currentDoc position of sciDocs
+        showNext := isCurrentDoc || this.currentDoc = this.docs.length() ? this.currentDoc - 1 : this.currentDoc
+
+        ; if (isCurrentDoc) {
+            ; Store our own ref to the current document
+            this.AddRefDocument(0, this.docs[index])
+        ; }
+        
+        ; Remove our current doc from tracking
+        this.docs.RemoveAt(index)
+        
+        if (isCurrentDoc) {
+            ; Change the current document to the next one
+            this.SetDocPointer(0, this.docs.HasKey(showNext) ? this.docs[showNext] : 0)
+        }
+        
+        ; release our ref from the previous document which drops the ref count to 0 and clears the memory
+        ; You should never drop the count to 0 if the Scintilla control is the last to own the document
+        this.ReleaseDocument(0, prevDoc)
+        
+        this.currentDoc := showNext
+        
+        if (cb && Type(cb) ~= "Func|Closure") {
+            cb.Call(this)
         }
     }
     
@@ -129,6 +201,7 @@ Class Scintilla extends Scintilla.ScintillaBase {
         Static OffX := x64 ? 100 : 72
         Static OffY := x64 ? 104 : 76
         Static OffUpdated := x64 ? 116 : 88
+        static offListCompletionMethod := x64 ? 120 : 92
         
         this.IdFrom          := NumGet(lParam + A_Ptrsize * 1)
         this.SCNCode         := NumGet(lParam + A_Ptrsize * 2)
@@ -156,6 +229,7 @@ Class Scintilla extends Scintilla.ScintillaBase {
         ;this.token           := NumGet(lParam + (x64 ? 108 : 80))
         ;this.annotLinesAdded := NumGet(lParam + (x64 ? 112 : 84))
         this.Updated         := NumGet(lParam + OffUpdated)
+        this.listCompletionMethod := NumGet(lParam + offListCompletionMethod)
 
         ; Call user defined Notify function and passes object to it as last parameter
         cb.call(ctrl, lParam)
@@ -207,6 +281,8 @@ Class Scintilla extends Scintilla.ScintillaBase {
         static SCFIND_WHOLEWORD:=2,SCFIND_MATCHCASE:=4,SCFIND_WORDSTART:=0x00100000,SCFIND_REGEXP:=0x00200000,SCFIND_POSIX:=0x00400000
         
         static SC_UPDATE_CONTENT:=0x01,SC_UPDATE_SELECTION:=0x02,SC_UPDATE_V_SCROLL:=0x04,SC_UPDATE_H_SCROLL:=0x08
+        
+        static SC_AC_FILLUP := 1, SC_AC_DOUBLECLICK := 2, SC_AC_TAB := 3, SC_AC_NEWLINE := 4, SC_AC_COMMAND := 5
         
         ; Keys
         static SCMOD_NORM:=0, SCMOD_SHIFT:=1,SCMOD_CTRL:=2,SCMOD_ALT:=4, SCK_DOWN:=300,SCK_UP:=301,SCK_LEFT:=302,SCK_RIGHT:=303,SCK_HOME:=304,SCK_END:=305,SCK_PRIOR:=306,SCK_NEXT:=307,SCK_DELETE:=308,SCK_INSERT:=309,SCK_ESCAPE:=7,SCK_BACK:=8,SCK_TAB:=9,SCK_RETURN:=13,SCK_ADD:=310,SCK_SUBTRACT:=311,SCK_DIVIDE:=312

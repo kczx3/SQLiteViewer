@@ -13,7 +13,8 @@
         IL_Add(this.toolbarImgList, "modify.ico")
         IL_Add(this.toolbarImgList, "delete.ico")
         
-        this.tb := new Toolbar(this.gui, "x+0 y+0 h24 w" width " Menu ToolTips Transparent vSnippetsTB")
+        this.tb := new Toolbar(this.gui, "x+0 y+0 h24 w" width " List ToolTips Transparent vSnippetsTB")
+        this.tb.ExStyle := 0x80 ; double buffer
         this.tb.OnEvent("Click", (tb, id) => toolbarCommands[id]())
         this.tb.SetImageList(this.toolbarImgList)
         this.tb.SetMaxTextRows()
@@ -35,6 +36,7 @@
         
         this.snippetsLVTooltipHwnd := SendMessage(LVM_GETTOOLTIPS := 0x104E, 0, 0, this.snippetsLV.hwnd)
         this.snippetsLV.OnNotify(-158, (ctrl, l) => this.handleInfoTip(ctrl, l))
+        this.snippetsLV.OnNotify(LVN_GETEMPTYMARKUP := -187, (ctrl, l) => this.setEmptyText(ctrl, l))
         
         SetExplorerTheme(this.snippetsLV.hwnd)
         HideFocusBorder(this.snippetsLV.hwnd)
@@ -49,6 +51,15 @@
         this.gui.MarginY := prevMarginY
     }
     
+    setEmptyText(ctrl, l) {
+        text := "Add a snippet!"
+        
+        ; see LVN_GETEMPTYMARKUP
+        ; put our string in the buffer
+        StrPut(text, l + A_PtrSize * 3 + 4, StrLen(text))
+        return true
+    }
+    
     handleInfoTip(ctrl, l) {
         Static NMHDRSize := A_PtrSize * 3
         Static offText := NMHDRSize + A_PtrSize
@@ -61,7 +72,7 @@
         row := NumGet(L + offItem, "Int") + 1
         snippet := this.snippets[row]
         
-        SendMessage(TTM_SETTITLEW := 0x421, 0, snippet.GetAddress("title"), this.snippetsLVTooltipHwnd)
+        SendMessage(TTM_SETTITLEW := 0x421, 0, &snippet.title, this.snippetsLVTooltipHwnd)
         StrPut(StrReplace(snippet.content, "`t", "    "), textAddr, "UTF-16")
     }
     
@@ -89,7 +100,7 @@
             addButtonW := 100
             addButtonX := (this.edit.ctrl.pos.w + (this.addSnippetGui.MarginX * 2) - addButtonW) // 2
             addButton := this.addSnippetGui.addButton("x" addButtonX " w" addButtonW " Default vSubmit", "")
-            addButton.OnEvent("Click", (ctrl) => this.handleClick(ctrl)) ;modify ? this.modifySnippet(toModify, ctrl) : this.addSnippet(ctrl))
+            addButton.OnEvent("Click", (ctrl) => this.handleClick(ctrl, modify)) ;modify ? this.modifySnippet(toModify, ctrl) : this.addSnippet(ctrl))
         }
         
         this.addSnippetGui.control["title"].value := modify ? this.snippets[this.toModify].title : ""
@@ -104,29 +115,29 @@
         }
     }
     
-    handleClick(ctrl) {
+    handleClick(ctrl, modify) {
         if (!data := this.submitAddSnippetGui(ctrl.gui)) {
             return
         }
         
-        if (data["submit"] = "Add") {
-            this.addSnippet(ctrl)
+        if (!modify) {
+            this.addSnippet(ctrl, data)
         }
-        else if (data["submit"] = "Save") {
+        else {
             if (!this.toModify) {
                 MsgBox("Please select a snippet to modify first", "No snippet selected", "Icon!")
                 return
             }
-            this.modifySnippet(ctrl, this.toModify)
+            this.modifySnippet(ctrl, this.toModify, data)
         }
     }
     
-    addSnippet(ctrl) {
+    addSnippet(ctrl, data) {
         this.snippets.push({id: this.snippets.length() + 1, title: data["title"], content: data["content"]})
         this.snippetsLV.Add("", data["title"])
     }
     
-    modifySnippet(ctrl, index) {
+    modifySnippet(ctrl, index, data) {
         this.snippetsLV.Modify(index, "", data["title"])
         this.snippets[index].title := data["title"]
         this.snippets[index].content := data["content"]
@@ -144,14 +155,23 @@
         }
     }
     
+    getSnippetContent() {
+        len := this.edit.GetLength() + 1
+        VarSetCapacity(content, len)
+        this.edit.GetText(len, &content)
+        return StrGet(&content, "UTF-8")
+    }
+    
     submitAddSnippetGui(gui) {
         data := gui.submit(false)
+        data["content"] := this.getSnippetContent()
+        
         if (data["title"] = "" || data["content"] = "") {
             MsgBox("Title and Content cannot be empty.", "Missing data!")
             return false
         }
         else {
-            gui.Destroy()
+            gui.Hide()
             return data
         }
     }

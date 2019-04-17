@@ -1,9 +1,21 @@
-﻿class SQLiteViewer_ResultsListView {
+﻿#Include <ZeeGrid>
+class SQLiteViewer_ResultsListView {
+    emptyText := ""
+    emptyTextCenter := true
+    
+    columnDropDown := 0
+    
     __New(gui, height, width, RS := False) {
         this.gui := gui
         
-        this.LV := gui.addListView("x+0 y+0 w" width " h" height " Count1000 -E0x200 LV0x4000 vResultsLV")
+        
+        ; this.grid := new ZeeGrid(gui, "x+0 y+0 w" width " h" height " vResultsLV Hidden")
+        ; this.grid.SetGridBGColor(7)
+        this.LV := gui.addListView("x+0 y+0 w" width " h" height " Count1000 -E0x200 LV0x14000 vResultsLV")
         this.LV.OnNotify(-312, (ctrl, l) => this.handleFilter(ctrl, l))
+        this.LV.OnNotify(LVN_GETEMPTYMARKUP := -187, (ctrl, l) => this.setEmptyText(ctrl, l))
+        this.LV.OnNotify(LVN_LINKCLICK := -184, () => Type(this.OnLinkClick) = "Func" && this.OnLinkclick() && this.resetEmptyText("Now run a query", true))
+        this.LV.OnNotify(LVN_COLUMNDROPDOWN := -164, (ctrl, l) => this.handleDropDownClick(ctrl, l))
         
         SetExplorerTheme(this.LV.hwnd)
         HideFocusBorder(this.LV.hwnd)
@@ -14,6 +26,52 @@
         headerImgList := IL_Create(1)
         IL_Add(headerImgList, "primary_key.ico")
         HD_EX_SetImageList(this.resultsLVHeaderHwnd, headerImgList)
+        
+        this.menu := MenuCreate()
+        this.menu.Add("Copy Column", () => this.copyColumn())
+    }
+    
+    handleDropDownClick(ctrl, l) {
+        this.columnDropDown := NumGet(l, A_PtrSize * 3 + 4) + 1
+        
+        VarSetCapacity(rect, 16)
+        SendMessage(HDM_GETITEMDROPDOWNRECT := 0x1219, this.columnDropDown - 1, &rect, this.resultsLVHeaderHwnd)
+        
+        
+        this.menu.show(NumGet(rect, "UInt") + this.LV.pos.x, NumGet(rect, 12, "UInt") + this.LV.pos.y)
+    }
+    
+    copyColumn() {
+        RS := this.RS
+        
+        str := ""
+        if (RS.HasRows) {
+            While(RC := this.RS.Next(Row) >= 1) {
+                str .= (A_Index = 1 ? "" : "`n") . row[this.columnDropDown]
+            }
+            Clipboard := str
+        }
+    }
+    
+    setEmptyText(ctrl, l) {
+        ; default text
+        text := this.emptyText || "<a>Connect a database and run a query to get started!</a>"
+        align := this.emptyTextCenter ? 1 : 0
+        
+        ; see https://docs.microsoft.com/en-us/windows/desktop/controls/lvn-getemptymarkup
+        
+        ; if showing default text, then center it in ListView
+        NumPut(this.emptyTextCenter, l, A_PtrSize * 3, "UInt")
+        
+        ; put our string in the buffer
+        StrPut(text, l + A_PtrSize * 3 + 4, StrLen(text))
+        return true
+    }
+    
+    resetEmptyText(text, center := false) {
+        this.emptyText := text
+        this.emptyTextCenter := center
+        SendMessage(LVM_RESETEMPTYTEXT := 0x1054, 0, 0, this.LV.hwnd)
     }
     
     redraw(flag) {
@@ -45,10 +103,9 @@
         hwnd := NumGet(l, 0, "Ptr")
         col := NumGet(l, NMHDR_Size, "Int")
         
-        headerCnt := HD_EX_GetCount(hwnd)
         filters := []
         
-        Loop(headerCnt) {
+        Loop(this.LV.GetCount("Column")) {
             ; String buffer to retrieve the filter text
             VarSetCapacity(filter, 64*2, 0)
             
@@ -129,6 +186,8 @@
         rowDisplay := (filters.length() ? filteredRows "/" : "") . totalRows " rows"
         statusBar.setText(rowDisplay, 3)
         
+        this.resetEmptyText(!filteredRows ? "No rows matched your filters" : "")
+        
         addRow() {
             rowNum := this.LV.Add()
             for i, val in Row {
@@ -139,7 +198,6 @@
     
     setData(RS) {
         this.RS := RS
-        rowCount := 0
         
         this.redraw(False)
         this.clearRows()
@@ -153,36 +211,32 @@
                         colType := "Integer"
                     }
                     else if (Row[i] is "float") {
-                        colType := Float
+                        colType := "Float"
                     }
                 }
-                this.LV.InsertCol(i, colType, column.name)
+                this.LV.InsertCol(i, "150 " colType, column.name)
                 if (column.primaryKey) {
-                    HD_EX_SetFormat(this.resultsLVHeaderHwnd, i, ["Image"])
+                    HD_EX_SetFormat(this.resultsLVHeaderHwnd, i, ["Image", "String", "SplitButton"])
                     HD_EX_SetImage(this.resultsLVHeaderHwnd, i, 1)
+                }
+                else {
+                    HD_EX_SetFormat(this.resultsLVHeaderHwnd, i, ["String", "SplitButton"])
                 }
             }
             this.RS.Reset()
         }
-        ; HD_EX_SetFormat(resultsLVHeader, 1, ["SplitButton"])
 
         If (this.RS.HasRows) {
             While(RC := this.RS.Next(Row) >= 1) {
-                rowCount++
-                rowNum := this.LV.Add()
-                for i, val in Row {
-                    this.LV.Modify(rowNum, "Col" i, val)
-                }
+                rowNum := this.LV.Add("", Row*)
             }
-        }
-
-        Loop(this.RS.ColumnCount) {
-            this.LV.ModifyCol(A_Index, 150)
         }
         
         this.RS.Reset()
+        
+        this.resetEmptyText(rowNum ? "" : "Your query returned no results")
 
         this.redraw(True)
-        return rowCount
+        return rowNum
     }
 }

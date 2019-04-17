@@ -11,8 +11,6 @@
 global error_icon := LoadPicture("error.ico", , dummyType)
 global successful_icon := LoadPicture("successful.ico", , dummyType)
 global loading_icon := LoadPicture("loading.ico", , dummyType)
-; global function_icon := "89504E470D0A1A0A0000000D4948445200000018000000180806000000E0773DF8000002D649444154785EED964B4C135D14C77BA765DAA2204291E203241082D5D45A12D1F03046A1088941A42ED0C4951B138C1B23F916AE75A10BDDE85A576A3061652446130C4244DEA820AF48041541BEB4A5C07466FC9FE4343193C16ECACE9BFC72EE3DF74EFEE79CFBC8085DD72D9BD9A4440BFE09D8C808211209FCB9404F6606A5A00FAC8267200548C912D80B3A4027180325C0C9598B6408DC02DBC1637012549A95CD04412412C8068D60114C827510F1FB3CD2D9869AFF826702C39489F1FB738DB58B989B693C5D7D91CB293612A8E152F472344A7DED317761C19E6E4988E6A55FFF5F824F668178B44255B59B42883C70196307B09A09FC008FB81F001F7376B8ECA94EC7537C983FFF6DE1FCCBD7DD6366512D2E2D3F242B49A298056C6602BBC008F72F80FD874B0F3423AA438A127BF2E66DDF17AFEF2E04F430EC686579A99BC7DAF8C44C848FFD9678096D26024EB00FE86000ACD9ED72134D8442E1E730DAD4E7D642AFCFF26268A0A5CC626999A339AFEFDEB8C396B39BFA78DF42A4B3D126FB81154C8165B08E88BC3431FFFDE7288C128EACAC17E5B5BF22DFA9EAAA6B88397768E04A455666868F7CD88B61D221CC048EB0ED072A018174724C4ECF2EA11C3DF82EDAD6DED14ABEAF0BC1EBB29C222853EC531DF956A2D136989899800065DC7FC7021A528E9063A73B3B0D6529A6721415E61791C5D855E2B93D74BCAAACC06AB506354DEBEFEC7A4F020A50A95E4681394EAF9C2F9A8CB3DD8B33AED707AA6E609C0532990CE0AA38EAAF686A087C02E3FE831E1FF9782F25C9107D31C8E5E8A7394D2D1653EF6B9A3E9B9AEABCCA6BD7408409E7BAB31FC4D4585B4FEFE089BEC10FB3FC7629408B673002BAC01DBEB5F57C9B1D40E25B990E5C1CB59DFD82AD0CB68274E37B153FA613A08ED36EE60C56E31BC536CA91F318D151E3315B6A2AF7011A6720836D1C751648639FF8DB4396F8F1E30C4C2254198E8A318C13CFB100A7AB181727834DFF6DF90D3E3FFDF68E2E1DA20000000049454E44AE426082"
-; FileOpen("function.png", "r").RawRead(function_icon, FileGetSize("function.png"))
 
 main := GuiCreate("+MaximizeBox +Resize +MinSize800x600", "SQLite Viewer")
 main.SetFont("s9", "Tahoma")
@@ -20,29 +18,34 @@ main.OnEvent("Close", (gui) => mainClose(gui, snippetsTab))
 main.OnEvent("Size", "mainResize")
 
 dbViewerTreeview := new SQLiteViewer_DBTreeview(main, 600, 200)
-addQueryTabFn := addQueryTab(db, name) => queryTabs.addQueryTab(db, name)
+addQueryTabFn := addQueryTab(db, name) => (queryTabs.addQueryTab(db, name), resultsLV.resetEmptyText("Run a query!", true))
 dbViewerTreeview.OnConnect(addQueryTabFn)
 dbViewerTreeview.OnDisconnect((db) => queryTabs.removeQueryTab(db))
 dbViewerTreeview.OnNewWorksheet(addQueryTabFn)
 
 global queryTabs := new SQLiteViewer_QueryTabs(main, "h200 w700 ys -Wrap Theme Section vQueryTabs")
 
-runQueryBtn := main.addButton("w" 100 - main.marginX " ys+" queryTabs.tabsInterior.y " Section vRunBtn Disabled", "Run")
+runQueryBtn := main.addButton("w" 100 - main.marginX " ys+" queryTabs.tabsInterior.y " vRunBtn Disabled", "Run")
 runQueryBtn.OnEvent("Click", (ctrl) => (tabIndex := queryTabs.getActiveTab(), runQuery(queryTabs.tabs[tabIndex], queryTabs.getQueryEditText())))
 
-clearResultsBtn := main.addButton("wp xs vClearBtn", "Clear Results")
-clearResultsBtn.OnEvent("Click", () => resultsLV.clearRows(true))
+clearResultsBtn := main.addButton("wp vClearBtn", "Clear Results")
+clearResultsBtn.OnEvent("Click", () => (resultsLV.clearRows(true), resultsLV.resetEmptyText("Run a query!", true)))
 
-utilitiesTabs := main.addTab3("ys-" queryTabs.tabsInterior.y " w200 h600 vUtilities", "Snippets")
+utilitiesTabs := main.addTab3("ys w200 h600 vUtilities", "Snippets")
 TC_EX_GetInterior(utilitiesTabs.hwnd, tabx, taby, tabw, tabh)
 
 snippetsTab := new SQLiteViewer_Snippets(main, tabw - 2, tabh - taby, loadSnippets())
+utilitiesTabs.UseTab()
 
-resultsTabs := main.addTab3("w800 h" 600 - queryTabs.tabsInterior.h - main.marginY " xm+" dbViewerTreeview.TV.pos.w + main.MarginX " y" queryTabs.tabsInterior.h + main.MarginY * 2 " vResultsTabs", "Results|History")
+splitter := main.addText("w800 h2 xs y" queryTabs.queryTabs.pos.h + main.MarginY * 2 " Section 0x8 vSplitter")
+splitter.OnEvent("click", "splitterDrag")
+
+resultsTabs := main.addTab3("w800 h" 600 - queryTabs.queryTabs.pos.h - (main.marginY * 2) - splitter.pos.h " xs vResultsTabs", "Results|History")
 TC_EX_GetInterior(resultsTabs.hwnd, tabx, taby, tabw, tabh)
 resultsTabs.useTab(1)
 
 resultsLV := new SQLiteViewer_ResultsListView(main, tabh - taby, tabw - 2)
+resultsLV.OnLinkClick := () => dbViewerTreeview.promptForDb()
 
 resultsTabs.useTab(2)
 
@@ -53,6 +56,9 @@ resultsTabs.UseTab()
 statusBar := main.addStatusBar("vStatusbar")
 statusBar.setParts(200, 600, 200)
 main.show()
+
+global verticalSplitCursor := DllCall("LoadCursor", "UInt", 0, "UInt", IDC_SIZENS := 32645)
+DllCall("SetClassLongPtrW", "Uint", splitter.hwnd, "Int", GCL_HCURSOR := -12, "Ptr", verticalSplitCursor) ; Set the cursor for the splitter
 
 Hotkey("If", () => isQueryEditFocused(main))
 Hotkey("^Enter", () => main.control["query"].visible && runQuery(queryTabs.tabs[queryTabs.getActiveTab()], queryTabs.getQueryEditText()))
@@ -86,12 +92,14 @@ runQuery(db, sql) {
     
     DllCall("QueryPerformanceFrequency", "Int64*", freq)
     DllCall("QueryPerformanceCounter", "Int64*", queryBefore)
+    ; cb := (this, count, text, names) => MsgBox(count)
+    ; stat := db.exec(sql)
     stat := db.Query(sql, RS)
     DllCall("QueryPerformanceCounter", "Int64*", queryAfter)
     queryTime := Round((queryAfter - queryBefore) / freq * 1000, 3)
     
     if (!stat) {
-        historyLV.addRow(fileName, StrReplace(sql, "`n", " `n"), "ERROR")
+        historyLV.addRow(fileName, sql, "ERROR")
         SendMessage(SB_SETICON, 2, error_icon, statusBar.hwnd) ; Otherwise SB.SetIcon() destroys the previous icon
         statusBar.SetText("ERROR - " db.ErrorMsg, 3)
         if (historyLV.LV.GetCount() > LV_EX_GetRowsPerPage(historyLV.LV.hwnd)) {
@@ -103,7 +111,6 @@ runQuery(db, sql) {
     
     rowCount := resultsLV.setData(RS)
 
-    ; historyLV.addRow(fileName, StrReplace(sql, "`n", " `n"), rowCount)
     historyLV.addRow(fileName, sql, rowCount)
     if (historyLV.LV.GetCount() > LV_EX_GetRowsPerPage(historyLV.LV.hwnd)) {
         historyLV.LV.ModifyCol(2, "AutoHdr")
@@ -112,6 +119,44 @@ runQuery(db, sql) {
     SendMessage(SB_SETICON, 2, successful_icon, statusBar.hwnd) ; Otherwise SB.SetIcon() destroys the previous icon
     statusBar.setText(rowCount " rows", 3)
     statusBar.SetText(queryTime "ms elapsed", 4)
+}
+
+splitterDrag(ctrl) {
+    gui := ctrl.gui
+    
+    ; change the cursor for the GUI as a whole while the splitter is being dragged to avoid it constantly changing between pointer and SIZENS
+    oldCursor := DllCall("SetClassLongPtrW", "Uint", gui.hwnd, "Int", GCL_HCURSOR := -12, "Ptr", verticalSplitCursor)
+    
+    MouseGetPos(, initY)
+    while (GetKeyState("LButton")) {
+        MouseGetPos(, newY)
+        diffY := newY - initY
+        
+        ; restrict vertical movement
+        tooHigh := newY <= gui.control["ClearBtn"].pos.y + gui.control["ClearBtn"].pos.h + gui.marginY
+        tooLow := newY >= gui.pos.h - gui.pos.h * 0.3
+        if (tooHigh || tooLow) {
+            continue
+        }
+        
+        gui.control["splitter"].move("y" newY)
+        
+        gui.control["QueryTabs"].move("h" gui.control["QueryTabs"].pos.h + diffY)
+        gui.control["Query"].move("h" gui.control["Query"].pos.h + diffY)
+        
+        gui.control["ResultsTabs"].move("y" gui.control["ResultsTabs"].pos.y + diffY " h" gui.control["ResultsTabs"].pos.h - diffY)
+        
+        ; Since these are in a Tab3, we don't even have to adjust the y position.  AHK handles it for us
+        gui.control["ResultsLV"].move("h" gui.control["ResultsLV"].pos.h - diffY)
+        gui.control["HistoryLV"].move("h" gui.control["HistoryLV"].pos.h - diffY)
+        gui.control["HistoryEdit"].move("h" gui.control["HistoryEdit"].pos.h - diffY)
+        
+        ; reset the Y value to diff against for next iteration
+        initY := newY
+        sleep(40) ; a litte delay before moving again
+    }
+    ; change the GUI cursor back when done
+    DllCall("SetClassLongPtrW", "Uint", gui.hwnd, "Int", GCL_HCURSOR := -12, "Ptr", oldCursor)
 }
 
 mainResize(gui, minMax, width, height) {
@@ -136,7 +181,7 @@ mainResize(gui, minMax, width, height) {
     buffer.count++
     
     ; Only move and redraw if we've buffered 3 pixels of resizing or we are maximizing or restoring from a maximized state
-    if (buffer.count = 3 || minMax = 1 || (prevMinMax = 1 && minMax = 0)) {
+    if (buffer.count = 3 || minMax = 1 || (prevMinMax > 0 && minMax = 0)) {
         halfH := buffer.h // 2
         remainderH := Mod(buffer.h, 2)
         halfW := buffer.w // 2
@@ -146,6 +191,7 @@ mainResize(gui, minMax, width, height) {
         gui.control["QueryTabs"].move("h" gui.control["QueryTabs"].pos.h + halfH " w" gui.control["QueryTabs"].pos.w + buffer.w)
         gui.control["Query"].move("h" gui.control["Query"].pos.h + halfH " w" gui.control["Query"].pos.w + buffer.w)
         gui.control["ResultsTabs"].move("y" gui.control["ResultsTabs"].pos.y + halfH " h" gui.control["ResultsTabs"].pos.h + halfH + remainderH " w" gui.control["ResultsTabs"].pos.w + buffer.w)
+        gui.control["splitter"].move("y" (gui.marginY * 2) + gui.control["QueryTabs"].pos.h " w" gui.control["ResultsTabs"].pos.w, true)
         gui.control["ResultsLV"].move("h" gui.control["ResultsLV"].pos.h + halfH + remainderH " w" gui.control["ResultsLV"].pos.w + buffer.w)
         gui.control["HistoryLV"].move("h" gui.control["HistoryLV"].pos.h + halfH + remainderH " w" gui.control["HistoryLV"].pos.w + halfW + remainderW)
         
@@ -182,10 +228,12 @@ setupSciControl(sci) {
     
     ; Autocomplete
     sci.AutoCSetOrder(1) ; have Scintilla perform the sorting for us
-    sci.AutoCSetFillups("", "(", 1)
-    ; sci.RGBAImageSetWidth(24)
-    ; sci.RGBAImageSetHeight(24)
-    ; sci.RegisterRGBAImage(1, function_icon, 1)
+    sci.AutoCSetFillups("", "([.", 1)
+    
+    ; Function icon used in AutoComplete - must set dimensions first
+    sci.RGBAImageSetWidth(16)
+    sci.RGBAImageSetHeight(16)
+    sci.RegisterRGBAImage(1, &function_icon := getFunctionIcon())
     
     ; Indentation
     sci.SetTabWidth(4)
@@ -212,6 +260,10 @@ setupSciControl(sci) {
     ; Selection
     Sci.SetSelBack(1, CvtClr(0xBEC0BD))
     sci.SetSelAlpha(80)
+    
+    ; Indicators
+    sci.IndicSetStyle(8, 0)
+    sci.IndicSetFore(8, 0xF8F8F2)
 
     ; sci.StyleSetFore(sci.STYLE_BRACELIGHT, CvtClr(0x3399FF))
     ; sci.StyleSetBold(sci.STYLE_BRACELIGHT, True)
@@ -221,13 +273,15 @@ setupSciControl(sci) {
     sci.StyleSetFore(sci.SCE_SQL_COMMENTDOC, CvtClr(0x75715E))
     sci.StyleSetFore(sci.SCE_SQL_COMMENTDOCKEYWORD, CvtClr(0x66D9EF))
     sci.StyleSetFore(sci.SCE_SQL_WORD, CvtClr(0xF92672))
+    sci.StyleSetBold(sci.SCE_SQL_WORD, false)
     sci.StyleSetFore(sci.SCE_SQL_NUMBER, CvtClr(0xAE81FF))
     sci.StyleSetFore(sci.SCE_SQL_STRING, CvtClr(0xE6DB74))
+    sci.StyleSetFore(sci.SCE_SQL_CHARACTER, CvtClr(0xE6DB74)) ; single quoted strings
     sci.StyleSetFore(sci.SCE_SQL_OPERATOR, CvtClr(0xF92672))
     sci.StyleSetFore(sci.SCE_SQL_USER1, CvtClr(0x66D9EF))
 
     sci.SetKeywords(0, keywords("keywords"), 1)
-    sci.SetKeywords(4, keywords("functions"), 1)
+    sci.SetKeywords(4, StrReplace(keywords("functions"), "?1"), 1) ; remove the icon identifiers so they get highlighted properly by the lexer
 
     ; line number margin
     PixelWidth := sci.TextWidth(sci.STYLE_LINENUMBER, "9999", 1)
@@ -235,7 +289,7 @@ setupSciControl(sci) {
     sci.SetMarginLeft(0, 2) ; Left padding
     
     ; used as a border between line numbers and content
-    borderMarginW := 1
+    borderMarginW := 0
     sci.SetMarginTypeN(1, sci.SC_MARGIN_FORE) ; change the second margin to be of type SC_MARGIN_FORE
     sci.SetMarginWidthN(1, borderMarginW) ; set width to 1 pixel
 
@@ -315,60 +369,6 @@ LV_EX_GetHeader(HLV) {
 }
 
 ; ======================================================================================================================
-; LV_EX_SetTileViewLines - Sets the maximum number of additional text lines in each tile, not counting the title.
-; ======================================================================================================================
-LV_EX_SetTileViewLines(HLV, Lines, tileX := "", tileY := "") {
-	; Lines : Maximum number of text lines in each item label, not counting the title.
-	; LVM_GETTILEVIEWINFO = 0x10A3 -> http://msdn.microsoft.com/en-us/library/bb761083(v=vs.85).aspx
-	; LVM_SETTILEVIEWINFO = 0x10A2 -> http://msdn.microsoft.com/en-us/library/bb761212(v=vs.85).aspx
-	; One line is added internally because the item might be wrapped to two lines!
-	Static SizeLVTVI := 40
-	Static offSize := 12
-	Static OffLines := 20
-	Static LVTVIM_TILESIZE := 0x1
-	Static LVTVIM_COLUMNS := 0x2
-	Static LVTVIF_AUTOSIZE := 0x0, LVTVIF_FIXEDWIDTH := 0x1, LVTVIF_FIXEDHEIGHT := 0x2, LVTVIF_FIXEDSIZE := 0x3
-	Mask := LVTVIM_COLUMNS | (tileX || tileY ? LVTVIM_TILESIZE : 0)
-	If (tileX && tileY)
-		flag := LVTVIF_FIXEDSIZE
-	Else If (tileX && !tileY)
-		flag := LVTVIF_FIXEDWIDTH
-	Else If (!tileX && tileY)
-		flag := LVTVIF_FIXEDHEIGHT
-	Else
-		flag := LVTVIF_AUTOSIZE
-	; If (Lines > 0)
-	; Lines++
-	VarSetCapacity(LVTVI, SizeLVTVI, 0)     ; LVTILEVIEWINFO
-	NumPut(SizeLVTVI, LVTVI, 0, "UInt")     ; cbSize
-	NumPut(Mask, LVTVI, 4, "UInt")    ; dwMask = LVTVIM_TILESIZE | LVTVIM_COLUMNS
-	NumPut(flag, LVTVI, 8, "UInt")       ; dwMask
-	if (tileX)
-		NumPut(tileX, LVTVI, 12, "Int")       ; sizeTile.cx
-	if (tileY)
-		NumPut(tileY, LVTVI, 16, "Int")       ; sizeTile.cx
-	NumPut(Lines, LVTVI, OffLines, "Int") ; c_lines: max lines below first line
-	return SendMessage(0x10A2, 0, &LVTVI, , "ahk_id " . HLV) ; LVM_SETTILEVIEWINFO
-}
-
-; ======================================================================================================================
-; LV_EX_SubItemHitTest - Gets the column (subitem) at the passed coordinates or the position of the mouse cursor.
-; ======================================================================================================================
-LV_EX_SubItemHitTest(HLV, X := -1, Y := -1) {
-   ; LVM_SUBITEMHITTEST = 0x1039 -> http://msdn.microsoft.com/en-us/library/bb761229(v=vs.85).aspx
-   VarSetCapacity(LVHTI, 24, 0) ; LVHITTESTINFO
-   If (X = -1) || (Y = -1) {
-      DllCall("User32.dll\GetCursorPos", "Ptr", &LVHTI)
-      DllCall("User32.dll\ScreenToClient", "Ptr", HLV, "Ptr", &LVHTI)
-   }
-   Else {
-      NumPut(X, LVHTI, 0, "Int")
-      NumPut(Y, LVHTI, 4, "Int")
-   }
-   return SendMessage(0x1039, 0, &LVHTI, , "ahk_id " . HLV) > 0x7FFFFFFF ? 0 : NumGet(LVHTI, 16, "Int") + 1
-}
-
-; ======================================================================================================================
 ; LV_EX_EnableGroupView - Enables or disables whether the items in a list-view control display as a group.
 ; ======================================================================================================================
 LV_EX_EnableGroupView(HLV, Enable := True) {
@@ -422,15 +422,13 @@ LV_EX_GroupInsert(HLV, GroupID, Header, Align := "", Index := -1, Subtitle := ""
     Static LVGF_ALIGN := 0x00000008
     Align := (A := Alignment[SubStr(Align, 1, 1)]) ? A : 0
     Mask := LVGF | (Align ? LVGF_ALIGN : 0) | (Subtitle ? LVGF_SUBTITLE : 0)
-    PHeader := A_IsUnicode ? &Header : LV_EX_PWSTR(Header, WHeader)
-    PSubtitle := A_IsUnicode ? &Subtitle : LV_EX_PWSTR(Subtitle, WSubtitle)
     VarSetCapacity(LVGROUP, SizeOfLVGROUP, 0)
     NumPut(SizeOfLVGROUP, LVGROUP, 0, "UInt")
     NumPut(Mask, LVGROUP, 4, "UInt")
-    NumPut(PHeader, LVGROUP, OffHeader, "Ptr")
+    NumPut(&Header, LVGROUP, OffHeader, "Ptr")
     NumPut(GroupID, LVGROUP, OffGroupID, "Int")
     NumPut(Align, LVGROUP, OffAlign, "UInt")
-    NumPut(PSubtitle, LVGROUP, OffSubtitle, "Ptr")
+    NumPut(&Subtitle, LVGROUP, OffSubtitle, "Ptr")
     return SendMessage(0x1091, Index, &LVGROUP, , "ahk_id " . HLV)
 }
 
@@ -491,12 +489,6 @@ LV_EX_LVITEM(ByRef LVITEM, Mask := 0, Row := 1, Col := 1) {
    VarSetCapacity(LVITEM, LVITEMSize, 0)
    NumPut(Mask, LVITEM, 0, "UInt"), NumPut(Row - 1, LVITEM, 4, "Int"), NumPut(Col - 1, LVITEM, 8, "Int")
 }
-; ----------------------------------------------------------------------------------------------------------------------
-LV_EX_PWSTR(Str, ByRef WSTR) { ; ANSI to Unicode
-   VarSetCapacity(WSTR, StrPut(Str, "UTF-16") * 2, 0)
-   StrPut(Str, &WSTR, "UTF-16")
-   Return &WSTR
-}
 
 ; ======================================================================================================================
 ; SetImage        Sets an image from the header's image list for the specified item.
@@ -518,6 +510,7 @@ HD_EX_SetImage(HHD, Index, Image) {
    NumPut(Image - 1, HDITEM, OffImg, "Int")
    return SendMessage(HDM_SETITEM, Index - 1, &HDITEM, , "ahk_id " . HHD)
 }
+
 ; ======================================================================================================================
 ; SetImageList    Assigns an image list to a header control.
 ; Parameters:     HIL - Handle to the image list.
@@ -540,7 +533,7 @@ HD_EX_SetImageList(HHD, HIL) {
 HD_EX_SetFormat(HHD, Index, FormatArray, Exclusive := False) {
    Static HDM_SETITEM := A_IsUnicode ? 0x120C : 0x1204 ; HDM_SETITEMW : HDM_SETITEMA
    Static HDF := {Left: 0x0000, Right: 0x0001, Center: 0x0002
-                , Bitmap: 0x2000, BitmapOnRight: 0x1000, OwnerDraw: 0x8000, String: 0x4000
+                , Bitmap: 0x2000, BitmapOnRight: 0x1000, OwnerDraw: 0x8000, String: 0x4000, Checkbox: 0x40, Checked: 0x80
                 , Image: 0x0800, RtlReading: 0x0004, SortDown: 0x0200, SortUp: 0x0400, SplitButton: 0x1000000}
    Static HDI_FORMAT := 0x0004
    Static OffFmt := (4 * 3) + (A_PtrSize * 2)
@@ -577,19 +570,22 @@ HD_EX_CreateHDITEM(ByRef HDITEM) {
    Return True
 }
 
-; ======================================================================================================================
-; GetCount        Gets the count of the items in a header control.
-; Return values:  Returns the number of items if successful, or -1 otherwise.
-; ======================================================================================================================
-HD_EX_GetCount(HHD) {
-   Static HDM_GETITEMCOUNT := 0x1200
-   return SendMessage(HDM_GETITEMCOUNT, 0, 0, , "ahk_id " . HHD)
+getfunctionIcon() {
+    static functionIconSrc := "0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xe4|0xe4|0xe4|0xff|0xa5|0xa5|0xa5|0xff|0xa9|0xa9|0xa9|0xff|0xf8|0xf8|0xf8|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xa4|0xa4|0xa4|0xff|0x2a|0x2a|0x2a|0xff|0x2c|0x2c|0x2c|0xff|0x0|0x0|0x0|0xff|0x7b|0x7b|0x7b|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xe3|0xe3|0xe3|0xff|0x9|0x9|0x9|0xff|0x7c|0x7c|0x7c|0xff|0xbf|0xbf|0xbf|0xff|0x3e|0x3e|0x3e|0xff|0xbe|0xbe|0xbe|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0x8a|0x8a|0x8a|0xff|0x0|0x0|0x0|0xff|0xa8|0xa8|0xa8|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0x41|0x41|0x41|0xff|0x0|0x0|0x0|0xff|0xcd|0xcd|0xcd|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0x89|0x89|0x89|0xff|0x55|0x55|0x55|0xff|0xb|0xb|0xb|0xff|0x0|0x0|0x0|0xff|0x4c|0x4c|0x4c|0xff|0x6b|0x6b|0x6b|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xae|0xae|0xae|0xff|0x83|0x83|0x83|0xff|0x0|0x0|0x0|0xff|0x16|0x16|0x16|0xff|0x99|0x99|0x99|0xff|0xb2|0xb2|0xb2|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xb5|0xb5|0xb5|0xff|0x0|0x0|0x0|0xff|0x48|0x48|0x48|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xf2|0xf2|0xf2|0xff|0x95|0x95|0x95|0xff|0x7c|0x7c|0x7c|0xff|0xec|0xec|0xec|0xff|0xe5|0xe5|0xe5|0xff|0x7f|0x7f|0x7f|0xff|0xf1|0xf1|0xf1|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0x85|0x85|0x85|0xff|0x0|0x0|0x0|0xff|0x75|0x75|0x75|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xe4|0xe4|0xe4|0xff|0xb0|0xb0|0xb0|0xff|0x1|0x1|0x1|0xff|0x70|0x70|0x70|0xff|0x38|0x38|0x38|0xff|0x4|0x4|0x4|0xff|0xd8|0xd8|0xd8|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0x55|0x55|0x55|0xff|0x0|0x0|0x0|0xff|0xaf|0xaf|0xaf|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0x3b|0x3b|0x3b|0xff|0x10|0x10|0x10|0xff|0xe5|0xe5|0xe5|0xff|0xf1|0xf1|0xf1|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xfd|0xfd|0xfd|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0x18|0x18|0x18|0xff|0xc|0xc|0xc|0xff|0xf3|0xf3|0xf3|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xfe|0xfe|0xfe|0xff|0xfc|0xfc|0xfc|0xff|0x59|0x59|0x59|0xff|0x1|0x1|0x1|0xff|0xe5|0xe5|0xe5|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xb9|0xb9|0xb9|0xff|0x6|0x6|0x6|0xff|0x84|0x84|0x84|0xff|0xd0|0xd0|0xd0|0xff|0x0|0x0|0x0|0xff|0x7f|0x7f|0x7f|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0x45|0x45|0x45|0xff|0xf|0xf|0xf|0xff|0x8f|0x8f|0x8f|0xff|0x0|0x0|0x0|0xff|0x89|0x89|0x89|0xff|0xec|0xec|0xec|0xff|0xff|0xff|0xff|0xff|0xb4|0xb4|0xb4|0xff|0x2|0x2|0x2|0xff|0xe|0xe|0xe|0xff|0x48|0x48|0x48|0xff|0x76|0x76|0x76|0xff|0xfc|0xfc|0xfc|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0x86|0x86|0x86|0xff|0xa1|0xa1|0xa1|0xff|0xfd|0xfd|0xfd|0xff|0x82|0x82|0x82|0xff|0x63|0x63|0x63|0xff|0xba|0xba|0xba|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xe4|0xe4|0xe4|0xff|0xd5|0xd5|0xd5|0xff|0xf6|0xf6|0xf6|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff|0xff"
+    
+    ; 16x16 image with 4 bytes per pixel
+    VarSetCapacity(functionIcon, 4 * 16 * 16 + 1)
+    Loop parse, functionIconSrc, "|" {
+        NumPut(A_LoopField, functionIcon, A_Index - 1, "UInt")
+    }
+    
+    return functionIcon
 }
 
 keywords(key := "") {
     static keywords := {
         keywords: "abort action add after all alter analyze and as asc attach autoincrement before begin between by cascade case cast check collate column commit conflict constraint create cross current current_date current_time current_timestamp database default deferrable deferred delete desc detach distinct do drop each else end escape except exclusive exists explain fail filter following for foreign from full glob group having if ignore immediate in index indexed initially inner insert instead intersect into is isnull join key left like limit match natural no not nothing notnull null of offset on or order outer over partition plan pragma preceding primary query raise range recursive references regexp reindex release rename replace restrict right rollback row rows savepoint select set table temp temporary then to transaction trigger unbounded union unique update using vacuum values view virtual when where window with without",
-        functions: "abs avg changes char coalesce count cume_dist date datetime dense_rank first_value glob group_concat hex ifnull instr json json_array json_array_length json_extract json_insert json_object json_patch json_remove json_replace json_set json_type json_valid json_quote json_group_array json_group_object json_each json_tree julianday lag last_insert_rowid last_value lead length like likelihood likely load_extension lower ltrim max min nth_value ntile nullif percent_rank printf quote random randomblob rank replace round row_number rtrim soundex sqlite_compileoption_get sqlite_compileoption_used sqlite_offset sqlite_source_id sqlite_version strftime substr sum time total total_changes trim typeof unicode unlikely upper zeroblob"
+        functions: "abs?1 avg?1 changes?1 char?1 coalesce?1 count?1 cume_dist?1 date?1 datetime?1 dense_rank?1 first_value?1 glob?1 group_concat?1 hex?1 ifnull?1 instr?1 json?1 json_array?1 json_array_length?1 json_extract?1 json_insert?1 json_object?1 json_patch?1 json_remove?1 json_replace?1 json_set?1 json_type?1 json_valid?1 json_quote?1 json_group_array?1 json_group_object?1 json_each?1 json_tree?1 julianday?1 lag?1 last_insert_rowid?1 last_value?1 lead?1 length?1 like?1 likelihood?1 likely?1 load_extension?1 lower?1 ltrim?1 max?1 min?1 nth_value?1 ntile?1 nullif?1 percent_rank?1 printf?1 quote?1 random?1 randomblob?1 rank?1 replace?1 round?1 row_number?1 rtrim?1 soundex?1 sqlite_compileoption_get?1 sqlite_compileoption_used?1 sqlite_offset?1 sqlite_source_id?1 sqlite_version?1 strftime?1 substr?1 sum?1 time?1 total?1 total_changes?1 trim?1 typeof?1 unicode?1 unlikely?1 upper?1 zeroblob?1"
     }
     
     return keywords.HasKey(key) ? keywords[key] : ""

@@ -1,6 +1,6 @@
 ﻿; ======================================================================================================================
 ; Function:         Class definitions as wrappers for SQLite3.dll to work with SQLite DBs.
-; AHK version:      1.1.23.01
+; AHK version:      2.0a-100
 ; Tested on:        Win 10 Pro (x64), SQLite 3.7.13
 ; Version:          0.0.01.00/2011-08-10/just me
 ;                   0.0.02.00/2012-08-10/just me   -  Added basic BLOB support
@@ -9,6 +9,7 @@
 ;                   0.0.05.00/2013-08-03/just me   -  Changed base class assignment
 ;                   0.0.06.00/2016-01-28/just me   -  Fixed version check, revised parameter initialization.
 ;                   0.0.07.00/2016-03-28/just me   -  Added support for PRAGMA statements.
+;                   0.0.08.00/2019-04-01/kczx3     -  Converted to AHK v2
 ; Remarks:          Names of "private" properties / methods are prefixed with an underscore,
 ;                   they must not be set / called by the script!
 ;                   
@@ -28,188 +29,191 @@
 ; CLASS SQliteDB - SQLiteDB main class
 ; ======================================================================================================================
 Class SQLiteDB Extends SQLiteDB.BaseClass {
-   ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-   ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-   ; PRIVATE Properties and Methods ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-   ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-   ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-   ; ===================================================================================================================
-   ; BaseClass - SQLiteDB base class
-   ; ===================================================================================================================
-   Class BaseClass {
-      Static Version := ""
-      Static _SQLiteDLL := A_ScriptDir . "\SQLite3.dll"
-      Static _RefCount := 0
-      Static _MinVersion := "3.6"
-   }
-   ; ===================================================================================================================
-   ; CLASS _Table
-   ; Object returned from method GetTable()
-   ; _Table is an independent object and does not need SQLite after creation at all.
-   ; ===================================================================================================================
-   Class _Table {
-      ; ----------------------------------------------------------------------------------------------------------------
-      ; CONSTRUCTOR  Create instance variables
-      ; ----------------------------------------------------------------------------------------------------------------
-      __New() {
-          This.ColumnCount := 0          ; Number of columns in the result table         (Integer)
-          This.RowCount := 0             ; Number of rows in the result table            (Integer)     
-          This.ColumnNames := []         ; Names of columns in the result table          (Array)
-          This.Rows := []                ; Rows of the result table                      (Array of Arrays)
-          This.HasNames := False         ; Does var ColumnNames contain names?           (Bool)
-          This.HasRows := False          ; Does var Rows contain rows?                   (Bool)
-          This._CurrentRow := 0          ; Row index of last returned row                (Integer)
-      }
-      ; ----------------------------------------------------------------------------------------------------------------
-      ; METHOD GetRow      Get row for RowIndex
-      ; Parameters:        RowIndex    - Index of the row to retrieve, the index of the first row is 1
-      ;                    ByRef Row   - Variable to pass out the row array
-      ; Return values:     On failure  - False
-      ;                    On success  - True, Row contains a valid array
-      ; Remarks:           _CurrentRow is set to RowIndex, so a subsequent call of NextRow() will return the
-      ;                    following row.
-      ; ----------------------------------------------------------------------------------------------------------------
-      GetRow(RowIndex, ByRef Row) {
-         Row := ""
-         If (RowIndex < 1 || RowIndex > This.RowCount)
-            Return False
-         If !This.Rows.HasKey(RowIndex)
-            Return False
-         Row := This.Rows[RowIndex]
-         This._CurrentRow := RowIndex
-         Return True
-      }
-      ; ----------------------------------------------------------------------------------------------------------------
-      ; METHOD Next        Get next row depending on _CurrentRow
-      ; Parameters:        ByRef Row   - Variable to pass out the row array
-      ; Return values:     On failure  - False, -1 for EOR (end of rows)
-      ;                    On success  - True, Row contains a valid array
-      ; ----------------------------------------------------------------------------------------------------------------
-      Next(ByRef Row) {
-         Row := ""
-         If (This._CurrentRow >= This.RowCount)
-            Return -1
-         This._CurrentRow += 1
-         If !This.Rows.HasKey(This._CurrentRow)
-            Return False
-         Row := This.Rows[This._CurrentRow]
-         Return True
-      }
-      ; ----------------------------------------------------------------------------------------------------------------
-      ; METHOD Reset       Reset _CurrentRow to zero
-      ; Parameters:        None
-      ; Return value:      True
-      ; ----------------------------------------------------------------------------------------------------------------
-      Reset() {
-         This._CurrentRow := 0
-         Return True
-      }
-   }  
-   ; ===================================================================================================================
-   ; CLASS _RecordSet
-   ; Object returned from method Query()
-   ; The records (rows) of a recordset can be accessed sequentially per call of Next() starting with the first record.
-   ; After a call of Reset(), calls of Next() will start with the first record again.
-   ; When the recordset isn't needed any more, call Free() to free the resources.
-   ; The lifetime of a recordset depends on the lifetime of the related SQLiteDB object.
-   ; ===================================================================================================================
-   Class _RecordSet {
-      ; ----------------------------------------------------------------------------------------------------------------
-      ; CONSTRUCTOR  Create instance variables
-      ; ----------------------------------------------------------------------------------------------------------------
-      __New() {
-          This.ColumnCount := 0          ; Number of columns                             (Integer)
-          This.ColumnNames := []         ; Names of columns in the result table          (Array)
-          This.HasNames := False         ; Does var ColumnNames contain names?           (Bool)
-          This.HasRows := False          ; Does _RecordSet contain rows?                 (Bool)
-          This.CurrentRow := 0           ; Index of current row                          (Integer)
-          This.ErrorMsg := ""            ; Last error message                            (String)
-          This.ErrorCode := 0            ; Last SQLite error code / ErrorLevel           (Variant)
-          This._Handle := 0              ; Query handle                                  (Pointer)
-          This._DB := {}                 ; SQLiteDB object                               (Object) 
-      }
-      ; ----------------------------------------------------------------------------------------------------------------
-      ; METHOD Next        Get next row of query result
-      ; Parameters:        ByRef Row   - Variable to store the row array
-      ; Return values:     On success  - True, Row contains the row array
-      ;                    On failure  - False, ErrorMsg / ErrorCode contain additional information
-      ;                                  -1 for EOR (end of records)
-      ; ----------------------------------------------------------------------------------------------------------------
-      Next(ByRef Row) {
-         Static SQLITE_NULL := 5
-         Static SQLITE_BLOB := 4
-         Static EOR := -1
-         Row := ""
-         This.ErrorMsg := ""
-         This.ErrorCode := 0
-         If !(This._Handle) {
-            This.ErrorMsg := "Invalid query handle!"
-            Return False
-         }
-         RC := DllCall("SQlite3.dll\sqlite3_step", "Ptr", This._Handle, "Cdecl Int")
-         If (ErrorLevel) {
-            This.ErrorMsg := "DLLCall sqlite3_step failed!"
-            This.ErrorCode := ErrorLevel
-            Return False
-         }
-         If (RC != This._DB._ReturnCode("SQLITE_ROW")) {
-            If (RC = This._DB._ReturnCode("SQLITE_DONE")) {
-               This.ErrorMsg := "EOR"
-               This.ErrorCode := RC
-               Return EOR
+    ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ; PRIVATE Properties and Methods ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ; ===================================================================================================================
+    ; BaseClass - SQLiteDB base class
+    ; ===================================================================================================================
+    Class BaseClass {
+        Static Version := ""
+        Static _SQLiteDLL := A_ScriptDir . "\SQLite3.dll"
+        Static _RefCount := 0
+        Static _MinVersion := "3.6"
+    }
+    ; ===================================================================================================================
+    ; CLASS _Table
+    ; Object returned from method GetTable()
+    ; _Table is an independent object and does not need SQLite after creation at all.
+    ; ===================================================================================================================
+    Class _Table {
+        ; ----------------------------------------------------------------------------------------------------------------
+        ; CONSTRUCTOR  Create instance variables
+        ; ----------------------------------------------------------------------------------------------------------------
+        __New() {
+            This.ColumnCount := 0          ; Number of columns in the result table         (Integer)
+            This.RowCount := 0             ; Number of rows in the result table            (Integer)     
+            This.ColumnNames := []         ; Names of columns in the result table          (Array)
+            This.Rows := []                ; Rows of the result table                      (Array of Arrays)
+            This.HasNames := False         ; Does var ColumnNames contain names?           (Bool)
+            This.HasRows := False          ; Does var Rows contain rows?                   (Bool)
+            This._CurrentRow := 0          ; Row index of last returned row                (Integer)
+        }
+        ; ----------------------------------------------------------------------------------------------------------------
+        ; METHOD GetRow      Get row for RowIndex
+        ; Parameters:        RowIndex    - Index of the row to retrieve, the index of the first row is 1
+        ;                    ByRef Row   - Variable to pass out the row array
+        ; Return values:     On failure  - False
+        ;                    On success  - True, Row contains a valid array
+        ; Remarks:           _CurrentRow is set to RowIndex, so a subsequent call of NextRow() will return the
+        ;                    following row.
+        ; ----------------------------------------------------------------------------------------------------------------
+        GetRow(RowIndex, ByRef Row) {
+            Row := ""
+            If (RowIndex < 1 || RowIndex > This.RowCount)
+                Return False
+            If !This.Rows.HasKey(RowIndex)
+                Return False
+            Row := This.Rows[RowIndex]
+            This._CurrentRow := RowIndex
+            Return True
+        }
+        ; ----------------------------------------------------------------------------------------------------------------
+        ; METHOD Next        Get next row depending on _CurrentRow
+        ; Parameters:        ByRef Row   - Variable to pass out the row array
+        ; Return values:     On failure  - False, -1 for EOR (end of rows)
+        ;                    On success  - True, Row contains a valid array
+        ; ----------------------------------------------------------------------------------------------------------------
+        Next(ByRef Row) {
+            Row := ""
+            If (This._CurrentRow >= This.RowCount)
+                Return -1
+            This._CurrentRow += 1
+            If !This.Rows.HasKey(This._CurrentRow)
+                Return False
+            Row := This.Rows[This._CurrentRow]
+            Return True
+        }
+        ; ----------------------------------------------------------------------------------------------------------------
+        ; METHOD Reset       Reset _CurrentRow to zero
+        ; Parameters:        None
+        ; Return value:      True
+        ; ----------------------------------------------------------------------------------------------------------------
+        Reset() {
+            This._CurrentRow := 0
+            Return True
+        }
+    }  
+    ; ===================================================================================================================
+    ; CLASS _RecordSet
+    ; Object returned from method Query()
+    ; The records (rows) of a recordset can be accessed sequentially per call of Next() starting with the first record.
+    ; After a call of Reset(), calls of Next() will start with the first record again.
+    ; When the recordset isn't needed any more, call Free() to free the resources.
+    ; The lifetime of a recordset depends on the lifetime of the related SQLiteDB object.
+    ; ===================================================================================================================
+    Class _RecordSet {
+        ; ----------------------------------------------------------------------------------------------------------------
+        ; CONSTRUCTOR  Create instance variables
+        ; ----------------------------------------------------------------------------------------------------------------
+        __New() {
+            This.ColumnCount := 0          ; Number of columns                             (Integer)
+            This.ColumnNames := []         ; Names of columns in the result table          (Array)
+            This.HasNames := False         ; Does var ColumnNames contain names?           (Bool)
+            This.HasRows := False          ; Does _RecordSet contain rows?                 (Bool)
+            This.CurrentRow := 0           ; Index of current row                          (Integer)
+            This.ErrorMsg := ""            ; Last error message                            (String)
+            This.ErrorCode := 0            ; Last SQLite error code / ErrorLevel           (Variant)
+            This._Handle := 0              ; Query handle                                  (Pointer)
+            This._DB := {}                 ; SQLiteDB object                               (Object) 
+        }
+        ; ----------------------------------------------------------------------------------------------------------------
+        ; METHOD Next        Get next row of query result
+        ; Parameters:        ByRef Row   - Variable to store the row array
+        ; Return values:     On success  - True, Row contains the row array
+        ;                    On failure  - False, ErrorMsg / ErrorCode contain additional information
+        ;                                  -1 for EOR (end of records)
+        ; ----------------------------------------------------------------------------------------------------------------
+        Next(ByRef Row) {
+            Static SQLITE_NULL := 5
+            Static SQLITE_BLOB := 4
+            Static EOR := -1
+            Row := ""
+            This.ErrorMsg := ""
+            This.ErrorCode := 0
+            If !(This._Handle) {
+                This.ErrorMsg := "Invalid query handle!"
+                Return False
             }
-            This.ErrorMsg := This._DB.ErrMsg()
-            This.ErrorCode := RC
-            Return False
-         }
-         RC := DllCall("SQlite3.dll\sqlite3_data_count", "Ptr", This._Handle, "Cdecl Int")
-         If (ErrorLevel) {
-            This.ErrorMsg := "DLLCall sqlite3_data_count failed!"
-            This.ErrorCode := ErrorLevel
-            Return False
-         }
-         If (RC < 1) {
-            This.ErrorMsg := "RecordSet is empty!"
-            This.ErrorCode := This._DB._ReturnCode("SQLITE_EMPTY")
-            Return False
-         }
-         Row := []
-         Loop(RC) {
-            Column := A_Index - 1
-            ColumnType := DllCall("SQlite3.dll\sqlite3_column_type", "Ptr", This._Handle, "Int", Column, "Cdecl Int")
+            RC := DllCall("SQlite3.dll\sqlite3_step", "Ptr", This._Handle, "Cdecl Int")
             If (ErrorLevel) {
-               This.ErrorMsg := "DLLCall sqlite3_column_type failed!"
-               This.ErrorCode := ErrorLevel
-               Return False
+                This.ErrorMsg := "DLLCall sqlite3_step failed!"
+                This.ErrorCode := ErrorLevel
+                Return False
             }
-            If (ColumnType = SQLITE_NULL) {
-               Row[A_Index] := ""
-            } Else If (ColumnType = SQLITE_BLOB) {
-               BlobPtr := DllCall("SQlite3.dll\sqlite3_column_blob", "Ptr", This._Handle, "Int", Column, "Cdecl UPtr")
-               BlobSize := DllCall("SQlite3.dll\sqlite3_column_bytes", "Ptr", This._Handle, "Int", Column, "Cdecl Int")
-               If (BlobPtr = 0) || (BlobSize = 0) {
-                  Row[A_Index] := ""
-               } Else {
-                  Row[A_Index] := {}
-                  Row[A_Index].Size := BlobSize
-                  Row[A_Index].Blob := ""
-                  Row[A_Index].SetCapacity("Blob", BlobSize)
-                  Addr := Row[A_Index].GetAddress("Blob")
-                  DllCall("Kernel32.dll\RtlMoveMemory", "Ptr", Addr, "Ptr", BlobPtr, "Ptr", BlobSize)
-               }
-            } Else {
-               StrPtr := DllCall("SQlite3.dll\sqlite3_column_text", "Ptr", This._Handle, "Int", Column, "Cdecl UPtr")
-               If (ErrorLevel) {
-                  This.ErrorMsg := "DLLCall sqlite3_column_text failed!"
-                  This.ErrorCode := ErrorLevel
-                  Return False
-               }
-               Row[A_Index] := StrGet(StrPtr, "UTF-8")
+            If (RC != This._DB._ReturnCode("SQLITE_ROW")) {
+                If (RC = This._DB._ReturnCode("SQLITE_DONE")) {
+                    This.ErrorMsg := "EOR"
+                    This.ErrorCode := RC
+                    Return EOR
+                }
+                This.ErrorMsg := This._DB.ErrMsg()
+                This.ErrorCode := RC
+                Return False
             }
-         }
-         This.CurrentRow += 1
-         Return True
-      }
+            RC := DllCall("SQlite3.dll\sqlite3_data_count", "Ptr", This._Handle, "Cdecl Int")
+            If (ErrorLevel) {
+                This.ErrorMsg := "DLLCall sqlite3_data_count failed!"
+                This.ErrorCode := ErrorLevel
+                Return False
+            }
+            If (RC < 1) {
+                This.ErrorMsg := "RecordSet is empty!"
+                This.ErrorCode := This._DB._ReturnCode("SQLITE_EMPTY")
+                Return False
+            }
+            Row := []
+            Loop(RC) {
+                Column := A_Index - 1
+                ColumnType := DllCall("SQlite3.dll\sqlite3_column_type", "Ptr", This._Handle, "Int", Column, "Cdecl Int")
+                If (ErrorLevel) {
+                    This.ErrorMsg := "DLLCall sqlite3_column_type failed!"
+                    This.ErrorCode := ErrorLevel
+                    Return False
+                }
+                If (ColumnType = SQLITE_NULL) {
+                    Row[A_Index] := ""
+                }
+                Else If (ColumnType = SQLITE_BLOB) {
+                    BlobPtr := DllCall("SQlite3.dll\sqlite3_column_blob", "Ptr", This._Handle, "Int", Column, "Cdecl UPtr")
+                    BlobSize := DllCall("SQlite3.dll\sqlite3_column_bytes", "Ptr", This._Handle, "Int", Column, "Cdecl Int")
+                    If (BlobPtr = 0) || (BlobSize = 0) {
+                        Row[A_Index] := ""
+                    }
+                    Else {
+                        Row[A_Index] := {}
+                        Row[A_Index].Size := BlobSize
+                        Row[A_Index].Blob := ""
+                        Row[A_Index].SetCapacity("Blob", BlobSize)
+                        Addr := Row[A_Index].GetAddress("Blob")
+                        DllCall("Kernel32.dll\RtlMoveMemory", "Ptr", Addr, "Ptr", BlobPtr, "Ptr", BlobSize)
+                    }
+                }
+                Else {
+                    StrPtr := DllCall("SQlite3.dll\sqlite3_column_text", "Ptr", This._Handle, "Int", Column, "Cdecl UPtr")
+                    If (ErrorLevel) {
+                        This.ErrorMsg := "DLLCall sqlite3_column_text failed!"
+                        This.ErrorCode := ErrorLevel
+                        Return False
+                    }
+                Row[A_Index] := StrGet(StrPtr, "UTF-8")
+                }
+            }
+            This.CurrentRow += 1
+            Return True
+        }
       ; ----------------------------------------------------------------------------------------------------------------
       ; METHOD Reset       Reset the result pointer
       ; Parameters:        None
@@ -238,34 +242,35 @@ Class SQLiteDB Extends SQLiteDB.BaseClass {
          This.CurrentRow := 0
          Return True
       }
-      ; ----------------------------------------------------------------------------------------------------------------
-      ; METHOD Free        Free query result
-      ; Parameters:        None
-      ; Return values:     On success  - True
-      ;                    On failure  - False, ErrorMsg / ErrorCode contain additional information
-      ; Remarks:           After the call of this method further access on the query result is impossible.
-      ; ----------------------------------------------------------------------------------------------------------------
-      Free() {
-         This.ErrorMsg := ""
-         This.ErrorCode := 0
-         If !(This._Handle)
+        ; ----------------------------------------------------------------------------------------------------------------
+        ; METHOD Free        Free query result
+        ; Parameters:        None
+        ; Return values:     On success  - True
+        ;                    On failure  - False, ErrorMsg / ErrorCode contain additional information
+        ; Remarks:           After the call of this method further access on the query result is impossible.
+        ; ----------------------------------------------------------------------------------------------------------------
+        Free() {
+            This.ErrorMsg := ""
+            This.ErrorCode := 0
+            If !(This._Handle)
+                Return True
+            RC := DllCall("SQlite3.dll\sqlite3_finalize", "Ptr", This._Handle, "Cdecl Int")
+            If (ErrorLevel) {
+                This.ErrorMsg := "DLLCall sqlite3_finalize failed!"
+                This.ErrorCode := ErrorLevel
+                Return False
+            }
+            If (RC) {
+                This.ErrorMsg := This._DB._ErrMsg()
+                This.ErrorCode := RC
+                Return False
+            }
+            
+            This._DB._Queries.Delete(This._Handle)
+            This._Handle := 0
             Return True
-         RC := DllCall("SQlite3.dll\sqlite3_finalize", "Ptr", This._Handle, "Cdecl Int")
-         If (ErrorLevel) {
-            This.ErrorMsg := "DLLCall sqlite3_finalize failed!"
-            This.ErrorCode := ErrorLevel
-            Return False
-         }
-         If (RC) {
-            This.ErrorMsg := This._DB._ErrMsg()
-            This.ErrorCode := RC
-            Return False
-         }
-         This._DB._Queries.Remove(This._Handle)
-         This._Handle := 0
-         Return True
-      }
-   }
+        }
+    }
    ; ===================================================================================================================
    ; CONSTRUCTOR __New
    ; ===================================================================================================================
@@ -404,7 +409,7 @@ Class SQLiteDB Extends SQLiteDB.BaseClass {
    ; Return values:        On success  - True
    ;                       On failure  - False, ErrorMsg / ErrorCode contain additional information
    ; Remarks:              If DBPath is empty in write mode, a database called ":memory:" is created in memory
-   ;                       and deletet on call of CloseDB.
+   ;                       and deleted on call of CloseDB.
    ; ===================================================================================================================
    OpenDB(DBPath, Access := "W", Create := True) {
       Static SQLITE_OPEN_READONLY  := 0x01 ; Database opened as read-only
@@ -528,11 +533,12 @@ Class SQLiteDB Extends SQLiteDB.BaseClass {
       }
       CBPtr := 0
       Err := 0
-      If (FO := Func(Callback)) && (FO.MinParams = 4)
-         CBPtr := CallbackCreate(Callback, "F C", 4)
+      If (Type(Callback) = "Func" && (Callback.MinParams = 4))
+         CBPtr := CallbackCreate(Callback, "FC", 4)
       This._StrToUTF8(SQL, UTF8)
-      RC := DllCall("SQlite3.dll\sqlite3_exec", "Ptr", This._Handle, "Ptr", &UTF8, "Int", CBPtr, "Ptr", Object(This)
-                  , "PtrP", Err, "Cdecl Int")
+      ObjAddRef(address := &this)
+      RC := DllCall("SQlite3.dll\sqlite3_exec", "Ptr", This._Handle, "Ptr", &UTF8, "Ptr", CBPtr, "Ptr", address, "PtrP", Err, "Cdecl Int")
+      ObjRelease(address)
       CallError := ErrorLevel
       If (CBPtr)
          CallbackFree(CBPtr)
@@ -542,7 +548,7 @@ Class SQLiteDB Extends SQLiteDB.BaseClass {
          Return False
       }
       If (RC) {
-         This.ErrorMsg := StrGet(Err, "UTF-8")
+         This.ErrorMsg := Err ? StrGet(Err, "UTF-8") : ""
          This.ErrorCode := RC
          DllCall("SQLite3.dll\sqlite3_free", "Ptr", Err, "Cdecl")
          Return False
@@ -658,7 +664,7 @@ Class SQLiteDB Extends SQLiteDB.BaseClass {
       ColumnCount := 0
       HasRows := False
       If !(This._Handle) {
-         This.ErrorMsg := "Invalid dadabase handle!"
+         This.ErrorMsg := "Invalid database handle!"
          Return False
       }
       If !RegExMatch(SQL, "i)^\s*(?:SELECT|PRAGMA)(?=\s)", sqlMatch) {
@@ -667,8 +673,8 @@ Class SQLiteDB Extends SQLiteDB.BaseClass {
       }
       Query := 0
       This._StrToUTF8(SQL, UTF8)
-      RC := DllCall("SQlite3.dll\sqlite3_prepare_v2", "Ptr", This._Handle, "Ptr", &UTF8, "Int", -1
-                  , "PtrP", Query, "Ptr", 0, "Cdecl Int")
+      RC := DllCall("SQlite3.dll\sqlite3_prepare_v2", "Ptr", This._Handle, "Ptr", &UTF8, "Int", StrLen(SQL)
+                  , "PtrP", Query, "PtrP", pUnusedSql, "Cdecl Int")
       If (ErrorLeveL) {
          This.ErrorMsg := "DLLCall sqlite3_prepare_v2 failed!"
          This.ErrorCode := ErrorLevel
@@ -725,7 +731,7 @@ Class SQLiteDB Extends SQLiteDB.BaseClass {
          This.ErrorCode := ErrorLevel
          Return False
       }
-      RS := new This._RecordSet
+      RS := new This._RecordSet()
       RS.ColumnCount := ColumnCount
       RS.Columns := Columns
       RS.HasNames := True
@@ -842,6 +848,40 @@ Class SQLiteDB Extends SQLiteDB.BaseClass {
       DllCall("SQLite3.dll\sqlite3_free", "Ptr", Ptr, "Cdecl")
       Return True
    }
+    ; ===================================================================================================================
+    ; METHOD StoreBLOB      Use BLOBs as parameters of an INSERT/UPDATE/REPLACE statement.
+    ; Parameters:           SQL         - SQL statement to be compiled
+    ;                       BlobArray   - Array of objects containing two keys/value pairs:
+    ;                                     Addr : Address of the (variable containing the) BLOB.
+    ;                                     Size : Size of the BLOB in bytes.
+    ; Return values:        On success  - True
+    ;                       On failure  - False, ErrorMsg / ErrorCode contain additional information
+    ; Remarks:              For each BLOB in the row you have to specify a ? parameter within the statement. The
+    ;                       parameters are numbered automatically from left to right starting with 1.
+    ;                       For each parameter you have to pass an object within BlobArray containing the address
+    ;                       and the size of the BLOB.
+    ; ===================================================================================================================
+    createScalarFunction(func, params) {
+        argType := Type(func)
+        if (argType != "Func" && argType != "Closure") {
+            throw Exception(this.__class "::" A_ThisFunc " - First parameter not a Func object", -1)
+        }
+        else if (!func.name) {
+            throw Exception(this.__class "::" A_ThisFunc " - Function must be named", -1)
+        }
+        this.ErrorMsg := ""
+        this.ErrorCode := 0
+        
+        cb := CallbackCreate(func, "F C")
+        
+        if (err := DllCall("SQLite3.dll\sqlite3_create_function16", "Ptr", this._handle, "Str", func.name, "Int", params, "Int", 0x801, "Ptr", 0, "Ptr", cb, "Ptr", 0, "Ptr", 0, "Cdecl Int")) {
+            this.ErrorMsg := This._ErrMsg()
+            this.ErrorCode := err
+            return false
+        }
+        
+        return true
+    }
    ; ===================================================================================================================
    ; METHOD StoreBLOB      Use BLOBs as parameters of an INSERT/UPDATE/REPLACE statement.
    ; Parameters:           SQL         - SQL statement to be compiled

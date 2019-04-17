@@ -28,6 +28,7 @@
         this.dbViewerToolbar := new Toolbar(gui, "h24 w200 Menu ToolTips Transparent")
         this.dbViewerToolbar.OnEvent("Click", (tb, id) => toolbarCommands.HasKey(id) && toolbarCommands[id](id))
         this.dbViewerToolbar.SetImageList(dbViewerImgList)
+        this.dbViewerToolbar.ExStyle := 0x80 ; double buffer
         this.dbViewerToolbar.SetMaxTextRows()
         this.dbViewerToolbar.Add(, "Add Database", 0, , , , 1) ; Add Database Button
         this.dbViewerToolbar.Add(, "Remove Database", 1, "Disabled", , , 2) ; Remove Database Button
@@ -38,7 +39,7 @@
         
         this.createImageList()
         
-        this.TV := this.gui.addTreeview("h" height - connectedDbsText.pos.h - this.dbViewerToolbar.ctrl.pos.h - 1 " w" width " vDBtreeview")
+        this.TV := this.gui.addTreeview("h" height - connectedDbsText.pos.h - this.dbViewerToolbar.ctrl.pos.h - 1 " w" width " vDBtreeview 0x200")
         SendMessage(0x112C, this.tvStyles, this.tvStyles, , "ahk_id " this.TV.hwnd)
         SetExplorerTheme(this.TV.hwnd)
         this.TV.SetImageList(this.TVImageList)
@@ -55,6 +56,7 @@
         static NMHDR_Size := A_PtrSize * 3
         static TVITEMSize := 48
         queryEdit := this.gui.control["query"]
+        queryTabs.queryEdit.SetFocus(0)
         
         MouseGetPos(mouseX, mouseY)
         
@@ -64,16 +66,13 @@
         NumPut( mouseY - this.TV.Pos.Y - this.gui.MarginY + 5, tvht, 4, "int" )
         
         item := SendMessage(TVM_HITTEST := 0x1111, 0, &tvht, this.TV.hwnd)
-        ; item := TVH_HitTest(this.TV.hwnd, result)
         itemText := this.TV.GetText(item)
         
         hImgList := SendMessage(TVM_CREATEDRAGIMAGE := 0x1112, 0, item, this.TV.hwnd)
-        ; ToolTip(item)
         
         DllCall("ImageList_BeginDrag", "Ptr", hImgList, "Int", 0, "Int", 0, "Int", 0)
         DllCall("ImageList_DragEnter", "Ptr", this.gui.hwnd, "Int", mouseX, "Int", mouseY)
         
-        ; prevX := mouseX, prevY := mouseY
         While GetKeyState("LButton") {
             MouseGetPos(mouseX, mouseY, , hoverCtrl, 3)
             
@@ -85,7 +84,7 @@
             VarSetCapacity(point, 24, 0)
             DllCall("User32.dll\GetCursorPos", "Ptr", &point)
             DllCall("User32.dll\ScreenToClient", "Ptr", queryEdit.hwnd, "Ptr", &point)
-            charPos := queryTabs.queryEdit.POSITIONFROMPOINT(NumGet(point), NumGet(point, 4))
+            charPos := queryTabs.queryEdit.PositionFromPoint(NumGet(point), NumGet(point, 4)) ; queryTabs is global
             this.insertTextIntoQuery(this.gui.control["query"], itemText, charPos)
         }
         
@@ -95,15 +94,19 @@
     
     insertTextIntoQuery(ctrl, text, pos) {
         length := StrLen(text)
-        ; SendMessage(EM_SETSEL := 0xB1, pos, pos, ctrl.hwnd)
-        ; SendMessage(EM_REPLACESEL := 0xC2, 1, &text, ctrl.hwnd)
+        
+        if (GetKeyState("Ctrl") && !(RegExMatch(Chr(queryTabs.queryEdit.GetCharAt(pos)), "\s") || RegExMatch(Chr(queryTabs.queryEdit.GetCharAt(pos - 1)), "\s"))) {
+            start := queryTabs.queryEdit.WordStartPosition(pos)
+            end := queryTabs.queryEdit.WordEndPosition(pos)
+            queryTabs.queryEdit.DeleteRange(start, end - start)
+            pos -= pos - start ; adjust the position by the difference of the original position and the Word start
+        }
+        
         queryTabs.queryEdit.InsertText(pos, text, 1)
         
-        pos += length
-        ; queryTabs.queryEdit.ctrl.focus()
-        queryTabs.queryEdit.GRABFOCUS()
-        queryTabs.queryEdit.GoToPos(pos)
-        ; SendMessage(EM_SETSEL, pos, pos, ctrl.hwnd)
+        queryTabs.queryEdit.ctrl.focus()
+        queryTabs.queryEdit.SetFocus(1)
+        queryTabs.queryEdit.GoToPos(pos += length)
     }
     
     handleTVChange(ctrl, id) {
@@ -131,9 +134,15 @@
         this.TV.Opt((flag ? "+" : "-") "Redraw")
     }
     
+    regexp(DB, ArgC, vals) {
+        regexNeedle := StrGet(DllCall("SQLite3.dll\sqlite3_value_text", "Ptr", NumGet(vals), "Cdecl Ptr"), "UTF-8")
+        search := StrGet(DllCall("SQLite3.dll\sqlite3_value_text", "Ptr", NumGet(vals + A_PtrSize), "Cdecl Ptr"), "UTF-8")
+        DllCall("SQLite3.dll\sqlite3_result_int", "Ptr", DB, "Int", RegexMatch(search, regexNeedle), "Cdecl") ; 0 = false, 1 = true
+    }
+    
     promptForDb() {
         if (!databaseFiles := FileSelect("M3", A_MyDocuments, "Select a database to add", "SQLite Database (*.db)")) {
-            return
+            return false
         }
         
         files := StrSplit(databaseFiles, "`n")
@@ -151,10 +160,14 @@
                 for i, cb in this.connectCallbacks {
                     cb.call(DB, file)
                 }
+                
+                DB.createScalarFunction(regexp(db, argC, vals) => this.regexp(db, argC, vals), 2)
             }
             
             this.addDatabase(DB)
         }
+        
+        return true
     }
     
     addDatabase(db) {
